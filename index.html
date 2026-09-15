@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pokémon 3D Grass Snake</title>
+    <style>
+        body {
+            /* Matches the playing field background to blend the game over screen */
+            background-color: #327735;
+            color: #ffffff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            touch-action: none;
+            transition: background-color 0.3s ease;
+            -webkit-text-size-adjust: 100%;
+        }
+
+        /* Landscape warning overlay with instructions */
+        @media screen and (orientation: landscape) {
+            body::before {
+                content: "This game cannot be played in landscape mode.\A\AIf you wish to play in landscape, switch off phone rotation.";
+                white-space: pre-wrap;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background-color: #1b263b;
+                color: #ffde00;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.05rem;
+                text-align: center;
+                padding: 25px;
+                z-index: 99999;
+                font-weight: bold;
+                box-sizing: border-box;
+                line-height: 1.5;
+            }
+        }
+
+        h1 {
+            font-size: 1.1rem;
+            margin: 2px 0;
+            color: #ffde00;
+            text-shadow: 2px 2px #3b4cca;
+        }
+
+        #scoreboard {
+            font-size: 0.85rem;
+            margin-bottom: 3px;
+        }
+
+        /* Taller 3D Styled Grass Canvas */
+        canvas {
+            border: 4px solid #ffde00;
+            border-radius: 6px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+            background-color: #388E3C;
+            max-width: 98vw;
+            max-height: 58vh;
+            touch-action: none;
+            cursor: pointer;
+        }
+
+        /* Virtual D-Pad Container */
+        .dpad-container {
+            width: 140px;
+            height: 140px;
+            margin-top: 6px;
+            position: relative;
+            touch-action: none;
+        }
+
+        /* D-Pad Button Unified Style */
+        .dpad-btn {
+            position: absolute;
+            background: linear-gradient(135deg, #3b4cca 0%, #29348c 100%);
+            border: 2px solid #ffde00;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            user-select: none;
+            -webkit-user-select: none;
+            transition: background 0.1s, transform 0.05s;
+        }
+
+        .dpad-btn:active, .dpad-btn.active {
+            background: linear-gradient(135deg, #1a237e 0%, #0d1b2a 100%);
+            transform: scale(0.95);
+        }
+
+        #dpad-up {
+            top: 0;
+            left: 45px;
+            width: 50px;
+            height: 42px;
+        }
+
+        #dpad-down {
+            bottom: 0;
+            left: 45px;
+            width: 50px;
+            height: 42px;
+        }
+
+        #dpad-left {
+            top: 45px;
+            left: 0;
+            width: 42px;
+            height: 50px;
+        }
+
+        #dpad-right {
+            top: 45px;
+            right: 0;
+            width: 42px;
+            height: 50px;
+        }
+
+        .dpad-center {
+            position: absolute;
+            top: 45px;
+            left: 45px;
+            width: 50px;
+            height: 50px;
+            background-color: #29348c;
+            border-radius: 6px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+            pointer-events: none;
+        }
+
+        .dpad-btn::after {
+            content: '';
+            width: 0;
+            height: 0;
+            border-style: solid;
+        }
+
+        #dpad-up::after {
+            border-width: 0 7px 10px 7px;
+            border-color: transparent transparent #ffde00 transparent;
+        }
+
+        #dpad-down::after {
+            border-width: 10px 7px 0 7px;
+            border-color: #ffde00 transparent transparent transparent;
+        }
+
+        #dpad-left::after {
+            border-width: 7px 10px 7px 0;
+            border-color: transparent #ffde00 transparent transparent;
+        }
+
+        #dpad-right::after {
+            border-width: 7px 0 7px 10px;
+            border-color: transparent transparent transparent #ffde00;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Pokémon 3D Grass Hunt</h1>
+    <div id="scoreboard">Score: <span id="score">0</span> | Speed Level: <span id="speedLevel">1</span></div>
+
+    <canvas id="gameCanvas" width="480" height="600"></canvas>
+
+    <div class="dpad-container" id="dpadArea">
+        <div class="dpad-btn" id="dpad-up"></div>
+        <div class="dpad-btn" id="dpad-left"></div>
+        <div class="dpad-center"></div>
+        <div class="dpad-btn" id="dpad-right"></div>
+        <div class="dpad-btn" id="dpad-down"></div>
+    </div>
+
+    <script>
+        if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock("portrait").catch(() => {});
+        }
+
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const tileSize = 20;
+        const tileColumns = canvas.width / tileSize;
+        const tileRows = canvas.height / tileSize;
+
+        let snake = [];
+        let dx = tileSize;
+        let dy = 0;
+        let nextDx = tileSize;
+        let nextDy = 0;
+        let score = 0;
+        let currentLevel = 1;
+        let foodEatenCount = 0;         // Total red balls collected
+        let blueBallsCollected = 0;     // Total blue balls collected
+        let pikachuBallsCollected = 0;  // Total Pikachu balls collected
+        
+        let food = { x: 0, y: 0 };
+        let blueBall = null; 
+        let blueBallTimerInterval = null;
+
+        let pikachuBall = null;         
+        let pikachuBallTimerInterval = null;
+
+        let gameInterval = null;
+        let gameState = 'START'; 
+        
+        let baseSpeed = 288; 
+        let currentSpeed = baseSpeed;
+
+        let grassTufts = [];
+        for (let i = 0; i < 200; i++) {
+            grassTufts.push({
+                x: Math.floor(Math.random() * canvas.width),
+                y: Math.floor(Math.random() * canvas.height),
+                color: Math.random() > 0.5 ? '#2E7D32' : '#4CAF50'
+            });
+        }
+
+        function initGame() {
+            let startX = Math.floor(tileColumns / 2) * tileSize;
+            let startY = Math.floor(tileRows / 2) * tileSize;
+            
+            snake = [
+                { x: startX, y: startY },
+                { x: startX - tileSize, y: startY },
+                { x: startX - (tileSize * 2), y: startY }
+            ];
+            score = 0;
+            currentLevel = 1;
+            foodEatenCount = 0;
+            blueBallsCollected = 0;
+            pikachuBallsCollected = 0;
+            currentSpeed = baseSpeed;
+            blueBall = null;
+            pikachuBall = null;
+            if (blueBallTimerInterval) clearInterval(blueBallTimerInterval);
+            if (pikachuBallTimerInterval) clearInterval(pikachuBallTimerInterval);
+
+            document.getElementById("score").innerText = score;
+            document.getElementById("speedLevel").innerText = currentLevel;
+            
+            dx = tileSize;
+            dy = 0;
+            nextDx = tileSize;
+            nextDy = 0;
+            
+            spawnFood();
+        }
+
+        function startGame() {
+            if (gameInterval) clearInterval(gameInterval);
+            initGame();
+            gameState = 'PLAYING';
+            gameInterval = setInterval(gameLoop, currentSpeed);
+        }
+
+        function updateSpeed(newSpeed) {
+            currentSpeed = newSpeed;
+            if (gameInterval) clearInterval(gameInterval);
+            gameInterval = setInterval(gameLoop, currentSpeed);
+        }
+
+        function spawnFood() {
+            food.x = Math.floor(Math.random() * tileColumns) * tileSize;
+            food.y = Math.floor(Math.random() * tileRows) * tileSize;
+            
+            snake.forEach(part => {
+                if (part.x === food.x && part.y === food.y) {
+                    spawnFood();
+                }
+            });
+            if (blueBall && blueBall.x === food.x && blueBall.y === food.y) {
+                spawnFood();
+            }
+            if (pikachuBall && pikachuBall.x === food.x && pikachuBall.y === food.y) {
+                spawnFood();
+            }
+        }
+
+        function spawnBlueBall() {
+            let bx = Math.floor(Math.random() * tileColumns) * tileSize;
+            let by = Math.floor(Math.random() * tileRows) * tileSize;
+
+            let conflict = (bx === food.x && by === food.y);
+            snake.forEach(part => {
+                if (part.x === bx && part.y === by) conflict = true;
+            });
+            if (pikachuBall && pikachuBall.x === bx && pikachuBall.y === by) conflict = true;
+
+            if (conflict) {
+                spawnBlueBall();
+                return;
+            }
+
+            blueBall = {
+                x: bx,
+                y: by,
+                timeLeft: 7 
+            };
+
+            if (blueBallTimerInterval) clearInterval(blueBallTimerInterval);
+            blueBallTimerInterval = setInterval(() => {
+                if (gameState === 'PLAYING' && blueBall) {
+                    blueBall.timeLeft--;
+                    if (blueBall.timeLeft <= 0) {
+                        blueBall = null;
+                        clearInterval(blueBallTimerInterval);
+                    }
+                }
+            }, 1000);
+        }
+
+        function spawnPikachuBall() {
+            let px = Math.floor(Math.random() * tileColumns) * tileSize;
+            let py = Math.floor(Math.random() * tileRows) * tileSize;
+
+            let conflict = (px === food.x && py === food.y);
+            snake.forEach(part => {
+                if (part.x === px && part.y === py) conflict = true;
+            });
+            if (blueBall && blueBall.x === px && blueBall.y === py) conflict = true;
+
+            if (conflict) {
+                spawnPikachuBall();
+                return;
+            }
+
+            pikachuBall = {
+                x: px,
+                y: py,
+                timeLeft: 8 
+            };
+
+            if (pikachuBallTimerInterval) clearInterval(pikachuBallTimerInterval);
+            pikachuBallTimerInterval = setInterval(() => {
+                if (gameState === 'PLAYING' && pikachuBall) {
+                    pikachuBall.timeLeft--;
+                    if (pikachuBall.timeLeft <= 0) {
+                        pikachuBall = null;
+                        clearInterval(pikachuBallTimerInterval);
+                    }
+                }
+            }, 1000);
+        }
+
+        function gameLoop() {
+            if (gameState !== 'PLAYING') return;
+            
+            dx = nextDx;
+            dy = nextDy;
+
+            moveSnake();
+            
+            if (checkGameOver()) {
+                gameState = 'GAMEOVER';
+                if (gameInterval) clearInterval(gameInterval);
+                if (blueBallTimerInterval) clearInterval(blueBallTimerInterval);
+                if (pikachuBallTimerInterval) clearInterval(pikachuBallTimerInterval);
+            }
+
+            drawScene();
+        }
+
+        function drawScene() {
+            ctx.fillStyle = '#327735';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            grassTufts.forEach(g => {
+                ctx.fillStyle = g.color;
+                ctx.fillRect(g.x, g.y, 2, 5);
+                ctx.fillRect(g.x + 3, g.y + 2, 2, 4);
+            });
+
+            if (gameState === 'START') {
+                drawSplashScreen();
+                return;
+            }
+
+            drawFood3D();
+            if (blueBall) {
+                drawBlueBall3D();
+            }
+            if (pikachuBall) {
+                drawPikachuBall3D();
+            }
+            drawSnake3D();
+
+            if (gameState === 'GAMEOVER') {
+                drawGameOverScreen();
+            }
+        }
+
+        function drawMiniPokeBall(cx, cy, radius, topColor) {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+            ctx.beginPath();
+            ctx.ellipse(cx, cy + radius * 0.8, radius * 0.7, radius * 0.3, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, Math.PI, 0, false);
+            let topGrad = ctx.createRadialGradient(cx - radius * 0.3, cy - radius * 0.3, radius * 0.1, cx, cy, radius);
+            topGrad.addColorStop(0, topColor);
+            topGrad.addColorStop(1, topColor === '#ff5252' ? '#990000' : (topColor === '#42a5f5' ? '#1565c0' : '#fbc02d'));
+            ctx.fillStyle = topGrad;
+            ctx.fill();
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = "#111";
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI, false);
+            let whiteGrad = ctx.createRadialGradient(cx - radius * 0.3, cy + radius * 0.3, radius * 0.1, cx, cy, radius);
+            whiteGrad.addColorStop(0, '#ffffff');
+            whiteGrad.addColorStop(1, '#90a4ae');
+            ctx.fillStyle = whiteGrad;
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = "#111111";
+            ctx.fillRect(cx - radius, cy - radius * 0.15, radius * 2, radius * 0.3);
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius * 0.35, 0, 2 * Math.PI);
+            ctx.fillStyle = "#111111";
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius * 0.2, 0, 2 * Math.PI);
+            ctx.fillStyle = "#ffffff";
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        function drawLarge3DPokeBall(cx, cy, radius) {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+            ctx.beginPath();
+            ctx.ellipse(cx, cy + radius * 0.9, radius * 0.7, radius * 0.3, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, Math.PI, 0, false);
+            let redGrad = ctx.createRadialGradient(cx - radius * 0.3, cy - radius * 0.3, radius * 0.1, cx, cy, radius);
+            redGrad.addColorStop(0, '#ff5252');
+            redGrad.addColorStop(1, '#990000');
+            ctx.fillStyle = redGrad;
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = "#111";
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI, false);
+            let whiteGrad = ctx.createRadialGradient(cx - radius * 0.3, cy + radius * 0.3, radius * 0.1, cx, cy, radius);
+            whiteGrad.addColorStop(0, '#ffffff');
+            whiteGrad.addColorStop(1, '#90a4ae');
+            ctx.fillStyle = whiteGrad;
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = "#111111";
+            ctx.fillRect(cx - radius, cy - radius * 0.12, radius * 2, radius * 0.24);
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius * 0.3, 0, 2 * Math.PI);
+            ctx.fillStyle = "#111111";
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius * 0.18, 0, 2 * Math.PI);
+            let btnGrad = ctx.createRadialGradient(cx - 2, cy - 2, 1, cx, cy, radius * 0.18);
+            btnGrad.addColorStop(0, '#ffffff');
+            btnGrad.addColorStop(1, '#cfd8dc');
+            ctx.fillStyle = btnGrad;
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        function drawSplashScreen() {
+            let boxX = 20;
+            let boxY = 30;
+            let boxW = 440;
+            let boxH = 540;
+
+            ctx.fillStyle = "rgba(17, 27, 39, 0.95)";
+            ctx.fillRect(boxX, boxY, boxW, boxH);
+
+            ctx.strokeStyle = "#ffde00";
+            ctx.lineWidth = 3;
+            ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+            // Start screen font sizes scaled up by ~40%
+            ctx.fillStyle = "#ffde00";
+            ctx.font = "bold 32px 'Courier New'";
+            ctx.textAlign = "center";
+            ctx.shadowColor = "#000";
+            ctx.shadowBlur = 4;
+            ctx.fillText("POKÉMON GRASS HUNT", canvas.width / 2, boxY + 40);
+            ctx.shadowBlur = 0;
+
+            // --- KEY SECTION (placed above splash details / main ball) ---
+            ctx.fillStyle = "#ffde00";
+            ctx.font = "bold 15px 'Courier New'";
+            ctx.fillText("--- ITEM KEY ---", canvas.width / 2, boxY + 75);
+
+            // Row 1: Red Ball key
+            drawMiniPokeBall(boxX + 45, boxY + 112, 10, '#ff5252');
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 13px 'Courier New'";
+            ctx.textAlign = "left";
+            ctx.fillText("Red ball: 10 points", boxX + 70, boxY + 117);
+
+            // Row 2: Blue Ball key
+            drawMiniPokeBall(boxX + 45, boxY + 142, 10, '#42a5f5');
+            ctx.fillText("Blue ball: reduce size", boxX + 70, boxY + 147);
+
+            // Row 3: Pikachu Ball key
+            drawMiniPokeBall(boxX + 45, boxY + 172, 10, '#ffee58');
+            ctx.fillText("Pikachu ball: slows down time", boxX + 70, boxY + 177);
+
+            // Center / Bottom Elements moved down to accommodate the key
+            drawLarge3DPokeBall(canvas.width / 2, boxY + 235, 32);
+
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 17px 'Courier New'";
+            ctx.textAlign = "center";
+            ctx.fillText("Control Onix & Search for Pokéballs!", canvas.width / 2, boxY + 305);
+
+            ctx.fillStyle = "#b0bec5";
+            ctx.font = "bold 14px 'Courier New'";
+            ctx.fillText("Screen wraps around edges!", canvas.width / 2, boxY + 332);
+            ctx.fillText("Blue Balls half length every 15th! (7s)", canvas.width / 2, boxY + 358);
+            ctx.fillText("Pikachu Balls half speed every 13th! (8s)", canvas.width / 2, boxY + 384);
+
+            ctx.fillStyle = "#3b4cca";
+            ctx.fillRect(canvas.width / 2 - 120, boxY + 418, 240, 56);
+            ctx.strokeStyle = "#ffde00";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(canvas.width / 2 - 120, boxY + 418, 240, 56);
+
+            ctx.fillStyle = "#ffde00";
+            ctx.font = "bold 24px 'Courier New'";
+            ctx.fillText("TAP TO START", canvas.width / 2, boxY + 455);
+            ctx.textAlign = "left"; 
+        }
+
+        function drawGameOverScreen() {
+            let boxX = 20;
+            let boxY = 50;
+            let boxW = 440;
+            let boxH = 500;
+
+            ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = "#1b263b";
+            ctx.fillRect(boxX, boxY, boxW, boxH);
+            ctx.strokeStyle = "#ffde00";
+            ctx.lineWidth = 4;
+            ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+            // End splash screen font sizes scaled up by 100% (2x original)
+            ctx.fillStyle = "#ff5252";
+            ctx.font = "bold 34px 'Courier New'";
+            ctx.textAlign = "center";
+            ctx.fillText("WILD ONIX FAINTED!", canvas.width / 2, boxY + 50);
+
+            ctx.fillStyle = "#ffde00";
+            ctx.font = "bold 24px 'Courier New'";
+            ctx.fillText("--- EXPEDITION STATS ---", canvas.width / 2, boxY + 95);
+
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 22px 'Courier New'";
+            ctx.fillText("Level Reached: " + currentLevel, canvas.width / 2, boxY + 140);
+            ctx.fillText("Final Score: " + score, canvas.width / 2, boxY + 176);
+            ctx.fillText("Red Balls Collected: " + foodEatenCount, canvas.width / 2, boxY + 212);
+            ctx.fillText("Blue Balls Collected: " + blueBallsCollected, canvas.width / 2, boxY + 248);
+            ctx.fillText("Pikachu Balls Collected: " + pikachuBallsCollected, canvas.width / 2, boxY + 284);
+
+            // Try Again Button
+            ctx.fillStyle = "#3b4cca";
+            ctx.fillRect(canvas.width / 2 - 130, boxY + 325, 260, 70);
+            ctx.strokeStyle = "#ffde00";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(canvas.width / 2 - 130, boxY + 325, 260, 70);
+
+            ctx.fillStyle = "#ffde00";
+            ctx.font = "bold 28px 'Courier New'";
+            ctx.fillText("TRY AGAIN", canvas.width / 2, boxY + 370);
+            ctx.textAlign = "left";
+        }
+
+        function drawSnake3D() {
+            snake.forEach((part, index) => {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+                ctx.beginPath();
+                ctx.ellipse(part.x + 10, part.y + 16, 9, 4, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                let baseColor = index === 0 ? "#5a4b73" : "#725f93";
+                let highlightColor = index === 0 ? "#8a74b0" : "#9e87c7";
+                let shadowColor = index === 0 ? "#3b304c" : "#4a3c61";
+
+                ctx.fillStyle = shadowColor;
+                ctx.beginPath();
+                ctx.roundRect(part.x + 1, part.y + 3, tileSize - 2, tileSize - 2, 6);
+                ctx.fill();
+
+                ctx.fillStyle = baseColor;
+                ctx.beginPath();
+                ctx.roundRect(part.x + 1, part.y + 1, tileSize - 2, tileSize - 3, 6);
+                ctx.fill();
+
+                ctx.fillStyle = highlightColor;
+                ctx.beginPath();
+                ctx.roundRect(part.x + 4, part.y + 2, tileSize - 8, 4, 2);
+                ctx.fill();
+
+                if (index === 0) {
+                    ctx.fillStyle = "#4a3c61";
+                    ctx.fillRect(part.x + 8, part.y - 2, 4, 3);
+                    ctx.fillStyle = highlightColor;
+                    ctx.fillRect(part.x + 9, part.y - 1, 2, 2);
+
+                    ctx.fillStyle = "#ff2222";
+                    let ex1 = {x: 0, y: 0}, ex2 = {x: 0, y: 0};
+                    if (dx > 0) { ex1 = {x: 13, y: 5}; ex2 = {x: 13, y: 12}; }
+                    else if (dx < 0) { ex1 = {x: 4, y: 5}; ex2 = {x: 4, y: 12}; }
+                    else if (dy > 0) { ex1 = {x: 5, y: 13}; ex2 = {x: 12, y: 13}; }
+                    else if (dy < 0) { ex1 = {x: 5, y: 4}; ex2 = {x: 12, y: 4}; }
+
+                    ctx.fillRect(part.x + ex1.x, part.y + ex1.y, 3, 3);
+                    ctx.fillRect(part.x + ex2.x, part.y + ex2.y, 3, 3);
+                }
+            });
+        }
+
+        function drawFood3D() {
+            let x = food.x + tileSize / 2;
+            let y = food.y + tileSize / 2;
+            let radius = 8;
+
+            ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+            ctx.beginPath();
+            ctx.ellipse(x, y + 6, 7, 3, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(x, y, radius, Math.PI, 0, false);
+            let redGrad = ctx.createRadialGradient(x - 2, y - 2, 1, x, y, radius);
+            redGrad.addColorStop(0, '#ff5252');
+            redGrad.addColorStop(1, '#c62828');
+            ctx.fillStyle = redGrad;
+            ctx.fill();
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = "#111";
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI, false);
+            let whiteGrad = ctx.createRadialGradient(x - 2, y + 2, 1, x, y, radius);
+            whiteGrad.addColorStop(0, '#ffffff');
+            whiteGrad.addColorStop(1, '#b0bec5');
+            ctx.fillStyle = whiteGrad;
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = "#111111";
+            ctx.fillRect(food.x + 3, y - 1, tileSize - 6, 2);
+
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = "#ffffff";
+            ctx.fill();
+            ctx.strokeStyle = "#111";
+            ctx.stroke();
+        }
+
+        function drawBlueBall3D() {
+            let x = blueBall.x + tileSize / 2;
+            let y = blueBall.y + tileSize / 2;
+            let radius = 8;
+
+            ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+            ctx.beginPath();
+            ctx.ellipse(x, y + 6, 7, 3, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(x, y, radius, Math.PI, 0, false);
+            let blueGrad = ctx.createRadialGradient(x - 2, y - 2, 1, x, y, radius);
+            blueGrad.addColorStop(0, '#42a5f5');
+            blueGrad.addColorStop(1, '#1565c0');
+            ctx.fillStyle = blueGrad;
+            ctx.fill();
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = "#111";
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI, false);
+            let whiteGrad = ctx.createRadialGradient(x - 2, y + 2, 1, x, y, radius);
+            whiteGrad.addColorStop(0, '#ffffff');
+            whiteGrad.addColorStop(1, '#b0bec5');
+            ctx.fillStyle = whiteGrad;
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = "#111111";
+            ctx.fillRect(blueBall.x + 3, y - 1, tileSize - 6, 2);
+
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = "#ffffff";
+            ctx.fill();
+            ctx.strokeStyle = "#111";
+            ctx.stroke();
+
+            ctx.fillStyle = "#ffde00";
+            ctx.font = "bold 10px 'Courier New'";
+            ctx.textAlign = "center";
+            ctx.fillText(blueBall.timeLeft + "s", x, blueBall.y - 4);
+            ctx.textAlign = "left";
+        }
+
+        function drawPikachuBall3D() {
+            let x = pikachuBall.x + tileSize / 2;
+            let y = pikachuBall.y + tileSize / 2;
+            let radius = 8;
+
+            ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+            ctx.beginPath();
+            ctx.ellipse(x, y + 6, 7, 3, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(x, y, radius, Math.PI, 0, false);
+            let yellowGrad = ctx.createRadialGradient(x - 2, y - 2, 1, x, y, radius);
+            yellowGrad.addColorStop(0, '#ffee58');
+            yellowGrad.addColorStop(1, '#fbc02d');
+            ctx.fillStyle = yellowGrad;
+            ctx.fill();
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = "#111";
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI, false);
+            let whiteGrad = ctx.createRadialGradient(x - 2, y + 2, 1, x, y, radius);
+            whiteGrad.addColorStop(0, '#ffffff');
+            whiteGrad.addColorStop(1, '#b0bec5');
+            ctx.fillStyle = whiteGrad;
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = "#111111";
+            ctx.fillRect(pikachuBall.x + 3, y - 1, tileSize - 6, 2);
+
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, 2 * Math.PI);
+            ctx.fillStyle = "#ffffff";
+            ctx.fill();
+            ctx.strokeStyle = "#111";
+            ctx.stroke();
+
+            ctx.fillStyle = "#ffde00";
+            ctx.font = "bold 10px 'Courier New'";
+            ctx.textAlign = "center";
+            ctx.fillText(pikachuBall.timeLeft + "s", x, pikachuBall.y - 4);
+            ctx.textAlign = "left";
+        }
+
+        function moveSnake() {
+            let head = { x: snake[0].x + dx, y: snake[0].y + dy };
+
+            if (head.x < 0) head.x = canvas.width - tileSize;
+            else if (head.x >= canvas.width) head.x = 0;
+            
+            if (head.y < 0) head.y = canvas.height - tileSize;
+            else if (head.y >= canvas.height) head.y = 0;
+
+            snake.unshift(head);
+
+            let ateFood = (head.x === food.x && head.y === food.y);
+            let ateBlue = (blueBall && head.x === blueBall.x && head.y === blueBall.y);
+            let atePikachu = (pikachuBall && head.x === pikachuBall.x && head.y === pikachuBall.y);
+
+            if (ateFood) {
+                score += 10;
+                document.getElementById("score").innerText = score;
+                
+                currentLevel = Math.floor(score / 30) + 1;
+                document.getElementById("speedLevel").innerText = currentLevel;
+                
+                // Cap speed progression so it stops increasing past Level 3
+                let effectiveLevel = Math.min(currentLevel, 3);
+                let newSpeed = Math.max(95, baseSpeed - (effectiveLevel - 1) * 16);
+                if (newSpeed !== currentSpeed) {
+                    updateSpeed(newSpeed);
+                }
+
+                foodEatenCount++;
+                if (foodEatenCount % 15 === 0) {
+                    spawnBlueBall();
+                }
+                if (foodEatenCount % 13 === 0) {
+                    spawnPikachuBall();
+                }
+
+                spawnFood();
+            } else if (ateBlue) {
+                blueBallsCollected++;
+                let targetLength = Math.max(1, Math.floor(snake.length / 2));
+                snake = snake.slice(0, targetLength);
+                
+                blueBall = null;
+                if (blueBallTimerInterval) clearInterval(blueBallTimerInterval);
+            } else if (atePikachu) {
+                pikachuBallsCollected++;
+                currentSpeed = currentSpeed * 2;
+                updateSpeed(currentSpeed);
+
+                pikachuBall = null;
+                if (pikachuBallTimerInterval) clearInterval(pikachuBallTimerInterval);
+
+                snake.pop(); 
+            } else {
+                snake.pop();
+            }
+        }
+
+        function checkGameOver() {
+            const head = snake[0];
+            for (let i = 1; i < snake.length; i++) {
+                if (head.x === snake[i].x && head.y === snake[i].y) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function handleScreenPress(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const clickX = (e.clientX - rect.left) * scaleX;
+            const clickY = (e.clientY - rect.top) * scaleY;
+
+            if (gameState === 'START') {
+                if (clickX >= canvas.width / 2 - 120 && clickX <= canvas.width / 2 + 120 &&
+                    clickY >= 448 && clickY <= 504) {
+                    startGame();
+                }
+            } else if (gameState === 'GAMEOVER') {
+                if (clickX >= canvas.width / 2 - 130 && clickX <= canvas.width / 2 + 130 &&
+                    clickY >= 375 && clickY <= 445) {
+                    startGame();
+                }
+            }
+        }
+
+        canvas.addEventListener("click", handleScreenPress);
+        canvas.addEventListener("touchstart", (e) => {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                let touch = e.touches[0];
+                handleScreenPress({ clientX: touch.clientX, clientY: touch.clientY });
+            }
+        }, { passive: false });
+
+        document.addEventListener("keydown", e => {
+            if (gameState === 'START') {
+                startGame();
+                return;
+            }
+            if (gameState === 'GAMEOVER') {
+                return; 
+            }
+            if ((e.code === "ArrowUp" || e.code === "KeyW") && dy === 0) { nextDx = 0; nextDy = -tileSize; }
+            if ((e.code === "ArrowDown" || e.code === "KeyS") && dy === 0) { nextDx = 0; nextDy = tileSize; }
+            if ((e.code === "ArrowLeft" || e.code === "KeyA") && dx === 0) { nextDx = -tileSize; nextDy = 0; }
+            if ((e.code === "ArrowRight" || e.code === "KeyD") && dx === 0) { nextDx = tileSize; nextDy = 0; }
+        });
+
+        function setupDpadButton(id, newDx, newDy) {
+            const btn = document.getElementById(id);
+
+            const triggerAction = (e) => {
+                e.preventDefault();
+                if (gameState === 'START') {
+                    startGame();
+                    return;
+                }
+                if (gameState === 'GAMEOVER') {
+                    return; 
+                }
+                if (gameState === 'PLAYING') {
+                    if (newDx !== 0 && dx === 0) { nextDx = newDx; nextDy = newDy; }
+                    if (newDy !== 0 && dy === 0) { nextDx = newDx; nextDy = newDy; }
+                }
+                btn.classList.add('active');
+            };
+
+            const releaseAction = (e) => {
+                e.preventDefault();
+                btn.classList.remove('active');
+            };
+
+            btn.addEventListener("touchstart", triggerAction, { passive: false });
+            btn.addEventListener("touchend", releaseAction, { passive: false });
+            btn.addEventListener("mousedown", triggerAction);
+            btn.addEventListener("mouseup", releaseAction);
+            btn.addEventListener("mouseleave", releaseAction);
+        }
+
+        setupDpadButton("dpad-up", 0, -tileSize);
+        setupDpadButton("dpad-down", 0, tileSize);
+        setupDpadButton("dpad-left", -tileSize, 0);
+        setupDpadButton("dpad-right", tileSize, 0);
+
+        drawScene();
+    </script>
+</body>
+</html>
