@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pokémon 3D Grass Snake</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #327735;
+            color: #ffffff;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            touch-action: none;
+            -webkit-text-size-adjust: 100%;
+        }
+
+        /* Splash Screen Image Overlay */
+        #splash-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: url('Snake.jpg') no-repeat center center / cover;
+            z-index: 100;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            cursor: pointer;
+            transition: opacity 0.3s ease-out;
+        }
+
+        #splash-screen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Landscape warning overlay */
+        @media screen and (orientation: landscape) {
+            body::before {
+                content: "This game cannot be played in landscape mode.\A\AIf you wish to play in landscape, switch off phone rotation.";
+                white-space: pre-wrap;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background-color: #1b263b;
+                color: #ffde00;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.05rem;
+                text-align: center;
+                padding: 25px;
+                z-index: 99999;
+                font-weight: bold;
+                box-sizing: border-box;
+                line-height: 1.5;
+            }
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 1.3rem;
+            margin: 10px 0 2px 0;
+            color: #ffde00;
+            text-shadow: 2px 2px 4px #111, 0 0 10px #3b4cca;
+        }
+
+        #scoreboard {
+            font-size: 1rem;
+            margin-bottom: 5px;
+            background: rgba(0,0,0,0.5);
+            padding: 5px 15px;
+            border-radius: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            text-shadow: 1px 1px 2px #000;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            touch-action: none;
+            cursor: pointer;
+        }
+
+        /* Virtual D-Pad Container */
+        .dpad-container {
+            width: 140px;
+            height: 140px;
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            touch-action: none;
+            pointer-events: auto;
+        }
+
+        /* D-Pad Button Style */
+        .dpad-btn {
+            position: absolute;
+            background: linear-gradient(135deg, rgba(59, 76, 204, 0.85) 0%, rgba(41, 52, 140, 0.85) 100%);
+            border: 2px solid #ffde00;
+            border-radius: 8px;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.6), inset 0 2px 4px rgba(255,255,255,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            user-select: none;
+            -webkit-user-select: none;
+            transition: background 0.1s, transform 0.05s;
+        }
+
+        .dpad-btn:active, .dpad-btn.active {
+            background: linear-gradient(135deg, rgba(26, 35, 126, 0.9) 0%, rgba(13, 27, 42, 0.9) 100%);
+            transform: scale(0.95) translateY(4px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.6);
+        }
+
+        #dpad-up { top: 0; left: 45px; width: 50px; height: 42px; }
+        #dpad-down { bottom: 0; left: 45px; width: 50px; height: 42px; }
+        #dpad-left { top: 45px; left: 0; width: 42px; height: 50px; }
+        #dpad-right { top: 45px; right: 0; width: 42px; height: 50px; }
+
+        .dpad-center {
+            position: absolute;
+            top: 45px;
+            left: 45px;
+            width: 50px;
+            height: 50px;
+            background-color: rgba(41, 52, 140, 0.85);
+            border-radius: 6px;
+            box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);
+            pointer-events: none;
+        }
+
+        .dpad-btn::after {
+            content: '';
+            width: 0;
+            height: 0;
+            border-style: solid;
+            filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
+        }
+
+        #dpad-up::after { border-width: 0 8px 12px 8px; border-color: transparent transparent #ffde00 transparent; }
+        #dpad-down::after { border-width: 12px 8px 0 8px; border-color: #ffde00 transparent transparent transparent; }
+        #dpad-left::after { border-width: 8px 12px 8px 0; border-color: transparent #ffde00 transparent transparent; }
+        #dpad-right::after { border-width: 8px 0 8px 12px; border-color: transparent transparent transparent #ffde00; }
+    </style>
+</head>
+<body>
+
+    <!-- Splash Screen Container -->
+    <div id="splash-screen"></div>
+
+    <div id="ui-layer">
+        <h1>Pokémon 3D Grass Hunt</h1>
+        <div id="scoreboard">Score: <span id="score">0</span> | Speed: <span id="speedLevel">1</span></div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="dpad-container" id="dpadArea">
+        <div class="dpad-btn" id="dpad-up"></div>
+        <div class="dpad-btn" id="dpad-left"></div>
+        <div class="dpad-center"></div>
+        <div class="dpad-btn" id="dpad-right"></div>
+        <div class="dpad-btn" id="dpad-down"></div>
+    </div>
+
+    <script>
+        if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock("portrait").catch(() => {});
+        }
+
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const splashScreen = document.getElementById("splash-screen");
+
+        const tileSize = 24;
+        let tileColumns, tileRows;
+        let grassTufts = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            tileColumns = Math.floor(canvas.width / tileSize);
+            tileRows = Math.floor(canvas.height / tileSize);
+            
+            grassTufts = [];
+            let numTufts = (canvas.width * canvas.height) / 1000;
+            for (let i = 0; i < numTufts; i++) {
+                grassTufts.push({
+                    x: Math.floor(Math.random() * canvas.width),
+                    y: Math.floor(Math.random() * canvas.height),
+                    color: Math.random() > 0.5 ? '#2E7D32' : '#4CAF50'
+                });
+            }
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        let snake = [];
+        let oldTail = { x: 0, y: 0 };
+        let dx = tileSize, dy = 0;
+        let nextDx = tileSize, nextDy = 0;
+        let score = 0;
+        let currentLevel = 1;
+        let foodEatenCount = 0, blueBallsCollected = 0, pikachuBallsCollected = 0;
+        
+        let food = { x: 0, y: 0 };
+        let blueBall = null, pikachuBall = null; 
+
+        let gameState = 'START'; 
+        let baseSpeed = 280; 
+        let currentSpeed = baseSpeed;
+
+        let particles = [];
+        let lastTime = 0;
+        let accumulator = 0;
+
+        function initGame() {
+            let startX = Math.floor(tileColumns / 2) * tileSize;
+            let startY = Math.floor(tileRows / 2) * tileSize;
+            
+            snake = [
+                { x: startX, y: startY },
+                { x: startX - tileSize, y: startY },
+                { x: startX - (tileSize * 2), y: startY }
+            ];
+            oldTail = { x: startX - (tileSize * 3), y: startY };
+            
+            score = 0; currentLevel = 1; foodEatenCount = 0; blueBallsCollected = 0; pikachuBallsCollected = 0;
+            currentSpeed = baseSpeed;
+            blueBall = null; pikachuBall = null; particles = [];
+
+            document.getElementById("score").innerText = score;
+            document.getElementById("speedLevel").innerText = currentLevel;
+            
+            dx = tileSize; dy = 0; nextDx = tileSize; nextDy = 0;
+            spawnFood();
+        }
+
+        function startGame() {
+            splashScreen.classList.add('hidden');
+            initGame();
+            gameState = 'PLAYING';
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                particles.push({
+                    x: x + tileSize / 2,
+                    y: y + tileSize / 2,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6 - 2,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
+        function spawnFood() {
+            food.x = Math.floor(Math.random() * tileColumns) * tileSize;
+            food.y = Math.floor(Math.random() * tileRows) * tileSize;
+            snake.forEach(part => { if (part.x === food.x && part.y === food.y) spawnFood(); });
+        }
+
+        function spawnBlueBall() {
+            let bx = Math.floor(Math.random() * tileColumns) * tileSize;
+            let by = Math.floor(Math.random() * tileRows) * tileSize;
+            blueBall = { x: bx, y: by, birth: performance.now() };
+        }
+
+        function spawnPikachuBall() {
+            let px = Math.floor(Math.random() * tileColumns) * tileSize;
+            let py = Math.floor(Math.random() * tileRows) * tileSize;
+            pikachuBall = { x: px, y: py, birth: performance.now() };
+        }
+
+        function gameLoop(time) {
+            let dt = time - lastTime;
+            lastTime = time;
+
+            if (gameState === 'PLAYING') {
+                accumulator += dt;
+                
+                while (accumulator >= currentSpeed) {
+                    dx = nextDx;
+                    dy = nextDy;
+                    moveSnake(); 
+                    accumulator -= currentSpeed;
+                    
+                    if (checkGameOver()) {
+                        gameState = 'GAMEOVER';
+                    }
+                }
+            }
+
+            let progress = (gameState === 'PLAYING') ? Math.min(accumulator / currentSpeed, 1.0) : 0;
+
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.03;
+            });
+            particles = particles.filter(p => p.life > 0);
+
+            drawScene(time, progress);
+            requestAnimationFrame(gameLoop);
+        }
+
+        function moveSnake() {
+            oldTail = { x: snake[snake.length - 1].x, y: snake[snake.length - 1].y };
+
+            let head = { x: snake[0].x + dx, y: snake[0].y + dy };
+
+            // Wrap around edges
+            if (head.x < 0) head.x = (tileColumns - 1) * tileSize;
+            else if (head.x >= tileColumns * tileSize) head.x = 0;
+            if (head.y < 0) head.y = (tileRows - 1) * tileSize;
+            else if (head.y >= tileRows * tileSize) head.y = 0;
+
+            snake.unshift(head);
+
+            let ateFood = (head.x === food.x && head.y === food.y);
+            let ateBlue = (blueBall && head.x === blueBall.x && head.y === blueBall.y);
+            let atePikachu = (pikachuBall && head.x === pikachuBall.x && head.y === pikachuBall.y);
+
+            if (ateFood) {
+                score += 10;
+                createParticles(food.x, food.y, '#ff5252');
+                document.getElementById("score").innerText = score;
+                currentLevel = Math.floor(score / 30) + 1;
+                document.getElementById("speedLevel").innerText = currentLevel;
+                currentSpeed = Math.max(95, baseSpeed - (Math.min(currentLevel, 3) - 1) * 20);
+                
+                foodEatenCount++;
+                if (foodEatenCount % 15 === 0) spawnBlueBall();
+                if (foodEatenCount % 13 === 0) spawnPikachuBall();
+                spawnFood();
+            } else if (ateBlue) {
+                blueBallsCollected++;
+                createParticles(blueBall.x, blueBall.y, '#42a5f5');
+                snake = snake.slice(0, Math.max(1, Math.floor(snake.length / 2)));
+                blueBall = null;
+            } else if (atePikachu) {
+                pikachuBallsCollected++;
+                createParticles(pikachuBall.x, pikachuBall.y, '#ffee58');
+                currentSpeed *= 2; 
+                pikachuBall = null;
+                snake.pop(); 
+            } else {
+                snake.pop();
+            }
+        }
+
+        function checkGameOver() {
+            const head = snake[0];
+            for (let i = 1; i < snake.length; i++) {
+                if (head.x === snake[i].x && head.y === snake[i].y) return true;
+            }
+            return false;
+        }
+
+        function drawScene(time, progress) {
+            let bgGrad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 0, canvas.width/2, canvas.height/2, canvas.width);
+            bgGrad.addColorStop(0, '#3a8a3f');
+            bgGrad.addColorStop(1, '#245a27');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            grassTufts.forEach(g => {
+                ctx.fillStyle = g.color;
+                ctx.fillRect(g.x, g.y, 2, 6);
+                ctx.fillRect(g.x + 4, g.y + 3, 2, 4);
+            });
+
+            let bobOffset = Math.sin(time / 200) * 3;
+
+            draw3DBall(food.x, food.y, '#ff5252', '#c62828', bobOffset);
+            if (blueBall) {
+                if (time - blueBall.birth > 7000) blueBall = null;
+                else draw3DBall(blueBall.x, blueBall.y, '#42a5f5', '#1565c0', bobOffset, 7 - Math.floor((time - blueBall.birth)/1000));
+            }
+            if (pikachuBall) {
+                if (time - pikachuBall.birth > 8000) pikachuBall = null;
+                else draw3DBall(pikachuBall.x, pikachuBall.y, '#ffee58', '#fbc02d', bobOffset, 8 - Math.floor((time - pikachuBall.birth)/1000));
+            }
+            
+            drawDynamicWorm(progress);
+            drawParticles();
+
+            if (gameState === 'GAMEOVER') {
+                splashScreen.classList.remove('hidden');
+                drawMenu("WILD ONIX FAINTED!", "TRY AGAIN", true);
+            }
+        }
+
+        function draw3DBall(x, y, topColor, topDark, bob, textTimer) {
+            let cx = x + tileSize / 2;
+            let cy = y + tileSize / 2 + bob;
+            let radius = tileSize * 0.4;
+
+            ctx.shadowColor = "rgba(0,0,0,0.6)";
+            ctx.shadowBlur = 8;
+            ctx.shadowOffsetY = 10 - bob;
+            
+            // Top hemisphere
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, Math.PI, 0, false);
+            let grad = ctx.createRadialGradient(cx - radius * 0.3, cy - radius * 0.3, radius * 0.1, cx, cy, radius);
+            grad.addColorStop(0, topColor);
+            grad.addColorStop(1, topDark);
+            ctx.fillStyle = grad;
+            ctx.fill();
+            
+            ctx.shadowColor = "transparent"; 
+            
+            // Bottom hemisphere
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI, false);
+            let whiteGrad = ctx.createRadialGradient(cx - radius * 0.3, cy + radius * 0.3, radius * 0.1, cx, cy, radius);
+            whiteGrad.addColorStop(0, '#ffffff');
+            whiteGrad.addColorStop(1, '#b0bec5');
+            ctx.fillStyle = whiteGrad;
+            ctx.fill();
+
+            // Outer dark border
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            ctx.strokeStyle = "#111111";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Center black belt strip
+            ctx.fillStyle = "#111111";
+            ctx.fillRect(cx - radius, cy - 1, radius * 2, 2);
+
+            // Center button outer black ring
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius * 0.35, 0, 2 * Math.PI);
+            ctx.fillStyle = "#111111";
+            ctx.fill();
+
+            // Center button inner white core
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius * 0.2, 0, 2 * Math.PI);
+            ctx.fillStyle = "#ffffff";
+            ctx.fill();
+
+            if (textTimer !== undefined) {
+                ctx.fillStyle = "#ffde00";
+                ctx.font = "bold 12px 'Courier New'";
+                ctx.textAlign = "center";
+                ctx.shadowColor = "#000"; ctx.shadowBlur = 4;
+                ctx.fillText(textTimer + "s", cx, cy - radius - 5);
+                ctx.shadowColor = "transparent"; ctx.textAlign = "left";
+            }
+        }
+
+        function drawDynamicWorm(progress) {
+            let gridW = tileColumns * tileSize;
+            let gridH = tileRows * tileSize;
+
+            for (let i = 0; i < snake.length; i++) {
+                let part = snake[i];
+                let prevPos = (i < snake.length - 1) ? snake[i + 1] : (oldTail || part);
+
+                let diffX = part.x - prevPos.x;
+                let diffY = part.y - prevPos.y;
+
+                if (diffX > tileSize * 2) diffX -= gridW;
+                else if (diffX < -tileSize * 2) diffX += gridW;
+
+                if (diffY > tileSize * 2) diffY -= gridH;
+                else if (diffY < -tileSize * 2) diffY += gridH;
+
+                let rx = prevPos.x + diffX * progress;
+                let ry = prevPos.y + diffY * progress;
+
+                part.rx = (rx + gridW) % gridW;
+                part.ry = (ry + gridH) % gridH;
+
+                if (i === 0) {
+                    part.moveDx = diffX;
+                    part.moveDy = diffY;
+                }
+            }
+
+            function drawBodyLayer(width, color, shadowOffset) {
+                ctx.beginPath();
+                ctx.strokeStyle = color;
+                ctx.lineWidth = width;
+                ctx.lineCap = "round";  
+                ctx.lineJoin = "round"; 
+
+                if (shadowOffset > 0) {
+                    ctx.shadowColor = "rgba(0,0,0,0.5)";
+                    ctx.shadowBlur = 6;
+                    ctx.shadowOffsetY = shadowOffset;
+                } else {
+                    ctx.shadowColor = "transparent";
+                }
+
+                let start = true;
+                for (let i = 0; i < snake.length; i++) {
+                    let p = snake[i];
+                    let cx = p.rx + tileSize / 2;
+                    let cy = p.ry + tileSize / 2;
+
+                    if (i > 0) {
+                        let prev = snake[i - 1];
+                        let distX = Math.abs(p.rx - prev.rx);
+                        let distY = Math.abs(p.ry - prev.ry);
+                        if (distX > tileSize * 1.5 || distY > tileSize * 1.5) {
+                            ctx.stroke();
+                            ctx.beginPath();
+                            start = true;
+                        }
+                    }
+
+                    if (start) {
+                        ctx.moveTo(cx, cy);
+                        start = false;
+                    } else {
+                        ctx.lineTo(cx, cy);
+                    }
+                }
+                ctx.stroke();
+            }
+
+            drawBodyLayer(tileSize - 2, "#4a3c61", 4);    
+            drawBodyLayer(tileSize - 6, "#725f93", 0);    
+            drawBodyLayer(tileSize - 14, "#9e87c7", 0);   
+
+            let head = snake[0];
+            ctx.fillStyle = "#ff2222";
+            ctx.shadowColor = "transparent";
+            let hx = head.rx;
+            let hy = head.ry;
+            
+            let ex1 = {x: 0, y: 0}, ex2 = {x: 0, y: 0};
+            if (head.moveDx > 0) { ex1 = {x: 16, y: 5}; ex2 = {x: 16, y: 14}; }       
+            else if (head.moveDx < 0) { ex1 = {x: 4, y: 5}; ex2 = {x: 4, y: 14}; }   
+            else if (head.moveDy > 0) { ex1 = {x: 5, y: 16}; ex2 = {x: 14, y: 16}; }  
+            else if (head.moveDy < 0) { ex1 = {x: 5, y: 4}; ex2 = {x: 14, y: 4}; }    
+            
+            ctx.fillRect(hx + ex1.x, hy + ex1.y, 4, 4);
+            ctx.fillRect(hx + ex2.x, hy + ex2.y, 4, 4);
+        }
+
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+        }
+
+        function drawMenu(title, btnText, showStats = false) {
+            let boxW = Math.min(canvas.width * 0.88, 420);
+            let boxH = 360;
+            let boxX = (canvas.width - boxW) / 2;
+            let boxY = (canvas.height - boxH) / 2 - 20;
+
+            ctx.fillStyle = "rgba(17, 35, 22, 0.75)";
+            ctx.fillRect(boxX, boxY, boxW, boxH);
+            ctx.strokeStyle = "#ffde00"; 
+            ctx.lineWidth = 3;
+            ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+            ctx.fillStyle = "#ff5252";
+            ctx.font = "bold 24px 'Courier New'";
+            ctx.textAlign = "center";
+            ctx.shadowColor = "#000";
+            ctx.shadowBlur = 6;
+            ctx.fillText(title, canvas.width / 2, boxY + 45);
+
+            ctx.fillStyle = "#ffffff"; 
+            ctx.font = "bold 16px 'Courier New'";
+            ctx.fillText("Level Reached: " + currentLevel, canvas.width / 2, boxY + 100);
+            ctx.fillText("Final Score: " + score, canvas.width / 2, boxY + 135);
+            ctx.fillText("Red Balls: " + foodEatenCount, canvas.width / 2, boxY + 170);
+            ctx.fillText("Blue Balls: " + blueBallsCollected, canvas.width / 2, boxY + 205);
+            ctx.fillText("Pika Balls: " + pikachuBallsCollected, canvas.width / 2, boxY + 240);
+
+            let btnW = 210, btnH = 50;
+            let btnX = canvas.width / 2 - btnW / 2;
+            let btnY = boxY + boxH - 70;
+
+            ctx.fillStyle = "rgba(59, 76, 202, 0.85)";
+            ctx.fillRect(btnX, btnY, btnW, btnH);
+            ctx.strokeStyle = "#ffde00"; 
+            ctx.lineWidth = 2;
+            ctx.strokeRect(btnX, btnY, btnW, btnH);
+            
+            ctx.fillStyle = "#ffde00";
+            ctx.font = "bold 20px 'Courier New'";
+            ctx.fillText(btnText, canvas.width / 2, btnY + 32);
+
+            ctx.shadowColor = "transparent";
+            ctx.textAlign = "left";
+        }
+
+        splashScreen.addEventListener("pointerdown", () => {
+            if (gameState !== 'PLAYING') startGame();
+        });
+
+        document.addEventListener("keydown", e => {
+            if (gameState !== 'PLAYING') { if (e.code === "Enter" || e.code === "Space") startGame(); return; }
+            if ((e.code === "ArrowUp" || e.code === "KeyW") && dy === 0) { nextDx = 0; nextDy = -tileSize; }
+            if ((e.code === "ArrowDown" || e.code === "KeyS") && dy === 0) { nextDx = 0; nextDy = tileSize; }
+            if ((e.code === "ArrowLeft" || e.code === "KeyA") && dx === 0) { nextDx = -tileSize; nextDy = 0; }
+            if ((e.code === "ArrowRight" || e.code === "KeyD") && dx === 0) { nextDx = tileSize; nextDy = 0; }
+        });
+
+        function setupDpadButton(id, newDx, newDy) {
+            const btn = document.getElementById(id);
+            const triggerAction = (e) => {
+                e.preventDefault();
+                if (gameState !== 'PLAYING') { startGame(); return; }
+                if (newDx !== 0 && dx === 0) { nextDx = newDx; nextDy = newDy; }
+                if (newDy !== 0 && dy === 0) { nextDx = newDx; nextDy = newDy; }
+                btn.classList.add('active');
+            };
+            const releaseAction = (e) => { e.preventDefault(); btn.classList.remove('active'); };
+            btn.addEventListener("touchstart", triggerAction, { passive: false });
+            btn.addEventListener("touchend", releaseAction, { passive: false });
+            btn.addEventListener("mousedown", triggerAction);
+            btn.addEventListener("mouseup", releaseAction);
+            btn.addEventListener("mouseleave", releaseAction);
+        }
+        setupDpadButton("dpad-up", 0, -tileSize);
+        setupDpadButton("dpad-down", 0, tileSize);
+        setupDpadButton("dpad-left", -tileSize, 0);
+        setupDpadButton("dpad-right", tileSize, 0);
+        
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
